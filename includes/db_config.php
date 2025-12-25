@@ -1,9 +1,9 @@
 <?php
 // データベース接続情報 (heteml用)
-$host = '★mysql801.phy.heteml.lan'; // hetemlのサーバー名
+$host = 'mysql801.phy.heteml.lan'; // hetemlのサーバー名
 $dbname = '_www'; 
 $user = '_www'; 
-$pass = '★fmkv7a23h4qa9'; 
+$pass = 'fmkv7a23h4qa9'; 
 
 try {
     // データベースに接続するための魔法の呪文
