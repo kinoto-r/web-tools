@@ -55,6 +55,11 @@ try {
         .btn-view { background: #e7f1ff; color: #0056b3; border: 1px solid #0056b3; }
         .btn-view:hover { background: #0056b3; color: white; }
         .nav-link { margin-bottom: 20px; display: block; color: #666; }
+        .main-content {
+        padding: 40px;
+        margin-left: 250px; /* ここが重要！ */
+        transition: margin-left 0.3s;
+    }
     </style>
 </head>
 <body>

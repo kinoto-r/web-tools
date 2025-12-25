@@ -29,7 +29,22 @@
     /* コンテンツ側の余白調整用 */
     body { transition: margin-left 0.3s; margin-left: 250px; }
     body.menu-closed { margin-left: 0; }
+/* sidebar.php の style 内に追加・修正 */
+body { 
+    margin: 0; 
+    padding: 0; 
+    transition: 0.3s; 
+}
 
+/* メニューが開いている時 */
+body:not(.menu-closed) .main-content {
+    margin-left: 250px !important; /* 強制的にサイドバーの分だけ右に寄せる */
+}
+
+/* メニューが閉じている時 */
+body.menu-closed .main-content {
+    margin-left: 0 !important;
+}
     /* 開くボタンのスタイル */
     .open-btn { position: fixed; top: 20px; left: 20px; font-size: 18px; background: #343a40; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; z-index: 999; }
 </style>

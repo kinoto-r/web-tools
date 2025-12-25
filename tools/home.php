@@ -107,6 +107,14 @@ try {
             font-size: 1.4em;
             color: #333;
         }
+        .main-content {
+        padding: 40px;
+        margin-left: 250px; /* ここが重要！ */
+        transition: margin-left 0.3s;
+    }
+    body.menu-closed .main-content {
+        margin-left: 0;
+    }
     </style>
 </head>
 <body>

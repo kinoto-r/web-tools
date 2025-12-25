@@ -45,6 +45,14 @@ if ($keyword !== '') {
         .res-text { font-size: 0.95em; color: #333; line-height: 1.6; }
         .highlight { background: yellow; font-weight: bold; }
         .nav-link { margin-bottom: 20px; display: block; color: #666; text-decoration: none; }
+        .main-content {
+        padding: 40px;
+        margin-left: 250px; /* ここが重要！ */
+        transition: margin-left 0.3s;
+    }
+    body.menu-closed .main-content {
+        margin-left: 0;
+    }
     </style>
 </head>
 <body>
