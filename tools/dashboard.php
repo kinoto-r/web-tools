@@ -136,8 +136,11 @@ try {
                     <?php endif; ?>
                 </td>
                 <td>
-                    <a href="xml-view.php?id=<?php echo $law['id']; ?>" class="btn-view" style="text-decoration: none; padding: 5px 10px; border: 1px solid #0056b3; border-radius: 4px; font-size: 12px; color: #0056b3;">詳細表示</a>
+                    <a href="xml-view.php?id=<?php echo $law['id']; ?>" class="btn-view" style="text-decoration: none; padding: 5px 10px; border: 1px solid #0056b3; border-radius: 4px; font-size: 12px; color: #0056b3;">詳細表示</a><br><br><?php if ($law['parent_id']): ?>
+    <a href="compare.php?id=<?php echo $law['id']; ?>" style="color: orange;">⚠ 改正比較</a>
+<?php endif; ?>
                 </td>
+                
             </tr>
             <?php endforeach; ?>
         </tbody>
