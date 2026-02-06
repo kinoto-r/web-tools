@@ -8,6 +8,7 @@
         <li><a href="dashboard.php">📊 サマリーボード</a></li>
         <li><a href="word-view.php">🔍 単語検索</a></li>
         <li><a href="index.php">📥 XML新規登録</a></li>
+        <li><a href="csv-diff-word.php">🟥 CSV差分→Word表</a></li>
     </ul>
 </div>
 
