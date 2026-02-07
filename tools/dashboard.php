@@ -101,7 +101,7 @@ try {
     <title>法令サマリーボード</title>
     <style>
         body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f4f7f6; margin: 0; padding: 0; color: #333; }
-        .main-content { padding: 40px; margin-left: 0; }
+        .main-content { padding: 40px 60px; margin-left: 20px; }
        
         h1 { border-left: 6px solid #0056b3; padding-left: 15px; margin-bottom: 30px; }
 
@@ -109,9 +109,9 @@ try {
         .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center; }
         .stat-number { font-size: 24px; font-weight: bold; color: #0056b3; }
 
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); table-layout: fixed; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); table-layout: auto; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; word-break: break-word; }
-        th { background: #0056b3; color: white; font-weight: normal; text-align: center; }
+        th { background: #0056b3; color: white; font-weight: normal; text-align: left; }
         tr:hover { background: #f1f8ff; }
 
         .nav-link { margin-bottom: 20px; display: none; color: #666; text-decoration: none; }
@@ -174,7 +174,7 @@ try {
                 <th class="column-tags">キーワード</th>
                 <th class="column-source">出典URL</th>
                 <th class="column-dropbox">Dropbox URL</th>
-                <th class="column-edit"><a href="#" id="toggle-details" class="detail-toggle">編集</a></th>
+                <th class="column-edit"></th>
             </tr>
         </thead>
         <tbody>
@@ -216,7 +216,9 @@ try {
                         <a href="<?php echo htmlspecialchars($law['dropbox_url']); ?>" target="_blank" style="font-size: 11px; color: #007bff;">リンク</a>
                     <?php endif; ?>
                 </td>
-                <td class="column-edit"><span class="edit-link" data-law-id="<?php echo $law['id']; ?>">編集</span></td>
+                <td class="column-edit">
+                    <a href="edit-law.php?id=<?php echo $law['id']; ?>" style="color: #0056b3; font-size: 12px; text-decoration: underline;">編集</a>
+                </td>
             </tr>
             <tr class="detail-row" data-detail-id="<?php echo $law['id']; ?>">
                 <td colspan="9">
