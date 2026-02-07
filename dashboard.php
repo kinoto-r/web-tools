@@ -101,8 +101,9 @@ try {
         .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center; }
         .stat-number { font-size: 24px; font-weight: bold; color: #0056b3; }
 
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); table-layout: fixed; }
+　　　　　th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; word-break: break-word; }
+
         th { background: #0056b3; color: white; font-weight: normal; }
         tr:hover { background: #f1f8ff; }
 
