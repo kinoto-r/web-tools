@@ -101,17 +101,17 @@ try {
     <title>法令サマリーボード</title>
     <style>
         body { font-family: "Helvetica Neue", Arial, sans-serif; background: #f4f7f6; margin: 0; padding: 0; color: #333; }
-        .main-content { padding: 40px; margin-left: 250px; transition: margin-left 0.3s; }
-        body.menu-closed .main-content { margin-left: 0; }
-
+        .main-content { padding: 40px; margin-left: 0; }
+       
         h1 { border-left: 6px solid #0056b3; padding-left: 15px; margin-bottom: 30px; }
 
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center; }
         .stat-number { font-size: 24px; font-weight: bold; color: #0056b3; }
 
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        th { background: #0056b3; color: white; font-weight: normal; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); table-layout: fixed; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; word-break: break-word; }
+        th { background: #0056b3; color: white; font-weight: normal; text-align: center; }
         tr:hover { background: #f1f8ff; }
 
         .nav-link { margin-bottom: 20px; display: none; color: #666; text-decoration: none; }
@@ -159,15 +159,7 @@ try {
             <div>登録法令数</div>
             <div class="stat-number"><?php echo count($laws); ?></div>
         </div>
-        <div class="stat-card">
-            <div>総蓄積条文数</div>
-            <div class="stat-number">
-                <?php 
-                    $total = 0;
-                    foreach($laws as $l) $total += $l['total_articles'];
-                    echo $total;
-                ?>
-            </div>
+       
         </div>
     </div>
 
@@ -249,7 +241,9 @@ try {
 
                             <button type="submit" name="update_law_info" style="margin-top: 5px; background: #28a745; color: white; border: none; padding: 6px; cursor: pointer; border-radius: 3px; font-weight: bold;">一括保存</button>
                         </form>
-
+<?php if(!empty($law['dropbox_url'])): ?>
+                            <div style="margin-top: 5px;"><a href="<?php echo htmlspecialchars($law['dropbox_url']); ?>" target="_blank" style="font-size: 11px; color: #007bff;">🔗 Dropbox資料を開く</a></div>
+                        <?php endif; ?>
                         </div>
                 </td>
             </tr>

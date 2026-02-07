@@ -58,7 +58,6 @@ if ($keyword !== '') {
 <body>
 <?php include __DIR__ . '/sidebar.php'; ?>
 <div class="main-content">
-    <a href="dashboard.php" class="nav-link">← サマリーボードに戻る</a>
     <h1>法令単語検索</h1>
 
     <div class="search-box">
