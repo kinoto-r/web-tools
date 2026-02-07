@@ -18,10 +18,11 @@
     /* サイドバーの基本スタイル */
     .sidebar { width: 250px; height: 100vh; background: #343a40; color: white; position: fixed; top: 0; left: 0; padding: 20px; transition: 0.3s; z-index: 1000; overflow-x: hidden; }
     .sidebar.closed { width: 0; padding: 0; }
-    
+
     .sidebar-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #4b545c; padding-bottom: 10px; }
+    .sidebar-header h2 { color: #ffffff; }
     .toggle-btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; }
-    
+
     .nav-menu { list-style: none; padding: 0; margin-top: 20px; }
     .nav-menu li { margin: 15px 0; }
     .nav-menu a { color: #c2c7d0; text-decoration: none; display: block; padding: 10px; border-radius: 4px; white-space: nowrap; }
