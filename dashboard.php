@@ -80,15 +80,6 @@ try {
     $stmt = $pdo->query($sql);
     $laws = $stmt->fetchAll();
     log_debug($debugLogs, '法令一覧を取得しました。', ['count' => count($laws)]);
-    $compareAvailableByTitle = [];
-    if ($hasEffectiveDate) {
-        $stmtCompare = $pdo->query("SELECT law_title, COUNT(DISTINCT effective_date) AS date_count FROM laws WHERE effective_date IS NOT NULL AND effective_date <> '' GROUP BY law_title");
-        $compareRows = $stmtCompare->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($compareRows as $row) {
-            $compareAvailableByTitle[$row['law_title']] = (int)$row['date_count'];
-        }
-        log_debug($debugLogs, '改正比較の対象件数を取得しました。', ['titles' => count($compareAvailableByTitle)]);
-    }
 } catch (Exception $e) {
     log_debug($debugLogs, 'データ取得エラーが発生しました。', ['error' => $e->getMessage()]);
     die("データ取得エラー: " . $e->getMessage());
@@ -123,19 +114,13 @@ try {
         .column-id { width: 60px; }
         .column-law { width: 220px; }
         .column-view { width: 120px; }
-        .column-updated { width: 120px; }
-        .column-effective { width: 120px; }
-        .column-tags { width: 160px; }
-        .column-source { width: 180px; }
-        .column-dropbox { width: 160px; }
-        .column-edit { width: 80px; }
+        .column-manage { width: 430px; }
 
         .detail-toggle { color: #fff; text-decoration: underline; font-weight: bold; }
         .detail-placeholder { font-size: 12px; color: #666; padding: 6px 0; }
         .detail-body { display: none; }
-        .detail-row { display: none; background: #fdfdfd; }
-        .detail-row.active { display: table-row; }
-        .edit-link { color: #0056b3; font-size: 12px; text-decoration: underline; cursor: pointer; }
+        body.show-detail .detail-body { display: block; }
+        body.show-detail .detail-placeholder { display: none; }
     </style>
 </head>
 <body>
@@ -178,12 +163,7 @@ try {
                 <th class="column-id">ID</th>
                 <th class="column-law">法令名 / 番号</th>
                 <th class="column-view">法令表示</th>
-                <th class="column-updated">更新日（登録日）</th>
-                <th class="column-effective">法令施行年月</th>
-                <th class="column-tags">キーワード</th>
-                <th class="column-source">出典URL</th>
-                <th class="column-dropbox">Dropbox URL</th>
-                <th class="column-edit"><a href="#" id="to
+                <th class="column-manage"><a href="#" id="toggle-details" class="detail-toggle">詳細管理</a></th>
             </tr>
         </thead>
         <tbody>
@@ -197,38 +177,12 @@ try {
                 </td>
                 <td class="column-view">
                     <a href="xml-view.php?id=<?php echo $law['id']; ?>" class="btn-view" style="text-decoration: none; padding: 5px 10px; border: 1px solid #0056b3; border-radius: 4px; font-size: 12px; color: #0056b3;">法令表示</a><br><br>
-                    <?php
-                        $titleKey = $law['law_title'];
-                        $compareCount = $compareAvailableByTitle[$titleKey] ?? 0;
-                        $canCompare = $compareCount >= 2 && !empty($law['effective_date']);
-                    ?>
-                    <?php if ($canCompare): ?>
+                    <?php if ($law['parent_id']): ?>
                         <a href="compare.php?id=<?php echo $law['id']; ?>" style="color: orange; font-size: 12px;">⚠ 改正比較</a>
                         <?php endif; ?>
                 </td>
-                <?php
-                    $displayUpdated = $law['updated_date'] ?? '';
-                    if ($displayUpdated === '' && !empty($law['created_at'])) {
-                        $displayUpdated = date('Y/m/d', strtotime($law['created_at']));
-                    }
-                ?>
-                <td class="column-updated"><?php echo htmlspecialchars($displayUpdated); ?></td>
-                <td class="column-effective"><?php echo htmlspecialchars($law['effective_date'] ?? ''); ?></td>
-                <td class="column-tags"><?php echo htmlspecialchars($law['tags'] ?? ''); ?></td>
-                <td class="column-source">
-                    <?php if (!empty($law['source_url'])): ?>
-                        <a href="<?php echo htmlspecialchars($law['source_url']); ?>" target="_blank" style="font-size: 11px; color: #007bff;">リンク</a>
-                    <?php endif; ?>
-                </td>
-                <td class="column-dropbox">
-                    <?php if (!empty($law['dropbox_url'])): ?>
-                        <a href="<?php echo htmlspecialchars($law['dropbox_url']); ?>" target="_blank" style="font-size: 11px; color: #007bff;">リンク</a>
-                    <?php endif; ?>
-                </td>
-                <td class="column-edit"><span class="edit-link" data-law-id="<?php echo $law['id']; ?>">編集</span></td>
-            </tr>
-            <tr class="detail-row" data-detail-id="<?php echo $law['id']; ?>">
-                <td colspan="10">
+                <td class="column-manage">
+                    <div class="detail-placeholder">詳細管理をクリックすると全表示します。</div>
                     <div class="detail-body">
                         <form action="" method="post" style="font-size: 11px; display: grid; gap: 4px; min-width: 250px; background: #fdfdfd; padding: 8px; border: 1px solid #eee; border-radius: 4px;">
                             <input type="hidden" name="law_id" value="<?php echo $law['id']; ?>">
@@ -251,7 +205,10 @@ try {
                             <button type="submit" name="update_law_info" style="margin-top: 5px; background: #28a745; color: white; border: none; padding: 6px; cursor: pointer; border-radius: 3px; font-weight: bold;">一括保存</button>
                         </form>
 
-                        </div>
+                        <?php if(!empty($law['dropbox_url'])): ?>
+                            <div style="margin-top: 5px;"><a href="<?php echo htmlspecialchars($law['dropbox_url']); ?>" target="_blank" style="font-size: 11px; color: #007bff;">🔗 Dropbox資料を開く</a></div>
+                        <?php endif; ?>
+                    </div>
                 </td>
             </tr>
             <?php endforeach; ?>
@@ -277,24 +234,10 @@ try {
     if (toggleDetails) {
         toggleDetails.addEventListener('click', (event) => {
             event.preventDefault();
-            const detailRows = document.querySelectorAll('.detail-row');
-            const shouldShow = !document.body.classList.contains('show-detail');
             document.body.classList.toggle('show-detail');
-            detailRows.forEach((row) => row.classList.toggle('active', shouldShow));
-            console.log('詳細管理の一括表示切り替え:', shouldShow);
+            console.log('詳細管理の表示切り替え:', document.body.classList.contains('show-detail'));
         });
     }
-
-    document.querySelectorAll('.edit-link').forEach((link) => {
-        link.addEventListener('click', () => {
-            const lawId = link.dataset.lawId;
-            const detailRow = document.querySelector(`.detail-row[data-detail-id="${lawId}"]`);
-            if (detailRow) {
-                detailRow.classList.toggle('active');
-                console.log('詳細管理の行表示切り替え:', { lawId, active: detailRow.classList.contains('active') });
-            }
-        });
-    });
 </script>
 </body>
 </html>

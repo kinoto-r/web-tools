@@ -1,43 +1,105 @@
 <?php
 require_once __DIR__ . '/../includes/db_config.php';
 
-// 比較したい「最新版」のIDを取得
-$newId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$debugLogs = [];
+
+function log_debug(array &$debugLogs, string $message, array $context = []): void
+{
+    $entry = $message;
+    if (!empty($context)) {
+        $entry .= " | " . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+    $debugLogs[] = $entry;
+    error_log($entry);
+}
+
+// 比較したい法令IDを取得
+$selectedId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
 try {
-    // 1. 新しい方の法令情報を取得
-    $stmtNewLaw = $pdo->prepare("SELECT * FROM laws WHERE id = ?");
-    $stmtNewLaw->execute([$newId]);
-    $newLaw = $stmtNewLaw->fetch();
+    $stmtSelected = $pdo->prepare("SELECT * FROM laws WHERE id = ?");
+    $stmtSelected->execute([$selectedId]);
+    $selectedLaw = $stmtSelected->fetch();
 
-    if (!$newLaw || !$newLaw['parent_id']) {
-        die("比較対象（旧バージョン）が見つからないか、不正なアクセスです。");
+    if (!$selectedLaw) {
+        log_debug($debugLogs, '指定IDの法令が見つかりません。', ['selectedId' => $selectedId]);
+        die("指定された法令が見つかりません。");
     }
 
-    $oldId = $newLaw['parent_id'];
+    if (empty($selectedLaw['effective_date'])) {
+        log_debug($debugLogs, '法令施行年月が未登録のため比較できません。', ['selectedId' => $selectedId]);
+        die("法令施行年月が未登録のため比較できません。");
+    }
 
-    // 2. 古い方の法令情報を取得
+    $stmtCandidates = $pdo->prepare("SELECT id, law_title, version_label, effective_date FROM laws WHERE law_title = ? AND effective_date IS NOT NULL AND effective_date <> '' ORDER BY effective_date ASC, id ASC");
+    $stmtCandidates->execute([$selectedLaw['law_title']]);
+    $candidates = $stmtCandidates->fetchAll(PDO::FETCH_ASSOC);
+
+    if (count($candidates) < 2) {
+        log_debug($debugLogs, '比較対象の法令が2件未満です。', ['lawTitle' => $selectedLaw['law_title']]);
+        die("比較対象の法令が2件以上必要です。");
+    }
+
+    $selectedIndex = null;
+    foreach ($candidates as $index => $candidate) {
+        if ((int)$candidate['id'] === (int)$selectedId) {
+            $selectedIndex = $index;
+            break;
+        }
+    }
+
+    if ($selectedIndex === null) {
+        log_debug($debugLogs, '比較候補に指定法令が含まれていません。', ['selectedId' => $selectedId]);
+        die("比較対象の特定に失敗しました。");
+    }
+
+    if ($selectedIndex > 0) {
+        $compareCandidate = $candidates[$selectedIndex - 1];
+    } else {
+        $compareCandidate = $candidates[$selectedIndex + 1];
+    }
+
+    $selectedEffective = $selectedLaw['effective_date'];
+    $compareEffective = $compareCandidate['effective_date'];
+
+    if ($selectedEffective >= $compareEffective) {
+        $newLawId = $selectedLaw['id'];
+        $oldLawId = $compareCandidate['id'];
+    } else {
+        $newLawId = $compareCandidate['id'];
+        $oldLawId = $selectedLaw['id'];
+    }
+
+    $stmtNewLaw = $pdo->prepare("SELECT * FROM laws WHERE id = ?");
+    $stmtNewLaw->execute([$newLawId]);
+    $newLaw = $stmtNewLaw->fetch();
+
     $stmtOldLaw = $pdo->prepare("SELECT * FROM laws WHERE id = ?");
-    $stmtOldLaw->execute([$oldId]);
+    $stmtOldLaw->execute([$oldLawId]);
     $oldLaw = $stmtOldLaw->fetch();
 
-    // 3. それぞれの条文を取得
+    log_debug($debugLogs, '比較対象を決定しました。', [
+        'selectedId' => $selectedId,
+        'newLawId' => $newLawId,
+        'oldLawId' => $oldLawId,
+        'lawTitle' => $selectedLaw['law_title'],
+    ]);
+
     $stmtContents = $pdo->prepare("SELECT * FROM law_contents WHERE law_id = ? ORDER BY id ASC");
-    
-    $stmtContents->execute([$newId]);
-    $newContents = $stmtContents->fetchAll(PDO::FETCH_GROUP|PDO::FETCH_UNIQUE|PDO::FETCH_ASSOC); 
-    // ※比較しやすくするため条文タイトルをキーにする等の工夫が必要ですが、
-    // ここではシンプルに「条番号」をキーにして並べます
-    
+
+    $stmtContents->execute([$newLawId]);
+    $newContents = $stmtContents->fetchAll(PDO::FETCH_GROUP|PDO::FETCH_UNIQUE|PDO::FETCH_ASSOC);
+
     $newItems = [];
     foreach($newContents as $c) $newItems[$c['article_title']] = $c['content_text'];
 
-    $stmtContents->execute([$oldId]);
+    $stmtContents->execute([$oldLawId]);
     $oldContents = $stmtContents->fetchAll();
     $oldItems = [];
     foreach($oldContents as $c) $oldItems[$c['article_title']] = $c['content_text'];
 
 } catch (Exception $e) {
+    log_debug($debugLogs, '比較処理でエラーが発生しました。', ['error' => $e->getMessage()]);
     die("エラー: " . $e->getMessage());
 }
 
@@ -85,7 +147,7 @@ function getDiffHtml($old, $new) {
     <div class="law-info-header">
         <h1>新旧対照表</h1>
         <p><strong>法令名：</strong><?php echo htmlspecialchars($newLaw['law_title']); ?></p>
-        <p>比較：<?php echo htmlspecialchars($oldLaw['version_label']); ?>（左） ↔ <strong><?php echo htmlspecialchars($newLaw['version_label']); ?>（右）</strong></p>
+        <p>比較：<?php echo htmlspecialchars($oldLaw['version_label'] ?: $oldLaw['effective_date']); ?>（左） ↔ <strong><?php echo htmlspecialchars($newLaw['version_label'] ?: $newLaw['effective_date']); ?>（右）</strong></p>
     </div>
 
     <div class="compare-container">
@@ -116,6 +178,16 @@ function getDiffHtml($old, $new) {
         </div>
     </div>
 </div>
+
+<?php if (!empty($debugLogs)): ?>
+    <script>
+        console.group('Compare Debug');
+        <?php foreach ($debugLogs as $log): ?>
+        console.log(<?php echo json_encode($log, JSON_UNESCAPED_UNICODE); ?>);
+        <?php endforeach; ?>
+        console.groupEnd();
+    </script>
+<?php endif; ?>
 
 </body>
 </html>
