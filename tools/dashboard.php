@@ -111,7 +111,6 @@ try {
         .stat-number { font-size: 24px; font-weight: bold; color: #0056b3; }
 
         table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
         th { background: #0056b3; color: white; font-weight: normal; }
         tr:hover { background: #f1f8ff; }
 
@@ -183,7 +182,7 @@ try {
                 <th class="column-tags">キーワード</th>
                 <th class="column-source">出典URL</th>
                 <th class="column-dropbox">Dropbox URL</th>
-                <th class="column-edit"><a href="#" id="to
+                <th class="column-edit"><a href="#" id="toggle-details" class="detail-toggle">編集</a></th>
             </tr>
         </thead>
         <tbody>
@@ -228,7 +227,7 @@ try {
                 <td class="column-edit"><span class="edit-link" data-law-id="<?php echo $law['id']; ?>">編集</span></td>
             </tr>
             <tr class="detail-row" data-detail-id="<?php echo $law['id']; ?>">
-                <td colspan="10">
+                <td colspan="9">
                     <div class="detail-body">
                         <form action="" method="post" style="font-size: 11px; display: grid; gap: 4px; min-width: 250px; background: #fdfdfd; padding: 8px; border: 1px solid #eee; border-radius: 4px;">
                             <input type="hidden" name="law_id" value="<?php echo $law['id']; ?>">
