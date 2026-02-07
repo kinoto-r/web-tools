@@ -3,6 +3,8 @@
 $message = "";
 $isError = false;
 $debugLogs = [];
+$previewData = null;
+$xmlPayload = '';
 
 function log_debug(array &$debugLogs, string $message, array $context = []): void
 {
@@ -92,128 +94,234 @@ function build_csv_rows_from_xml(SimpleXMLElement $xml, array &$debugLogs): arra
 
     return $rows;
 }
+function load_xml_string(string $xmlContent, array &$debugLogs): SimpleXMLElement
+{
+    libxml_use_internal_errors(true);
+    $xml = simplexml_load_string($xmlContent);
+    if ($xml === false) {
+        $errors = libxml_get_errors();
+        $errorMessages = [];
+        foreach ($errors as $error) {
+            $errorMessages[] = trim($error->message) . " (line: {$error->line})";
+        }
+        libxml_clear_errors();
+        log_debug($debugLogs, 'XMLの解析に失敗しました。', ['errors' => $errorMessages]);
+        throw new Exception('XMLの解析に失敗しました。XMLファイルの形式を確認してください。');
+    }
+log_debug($debugLogs, 'XMLの読み込みに成功しました。');
+    return $xml;
+}
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['xml_file'])) {
-    $action = $_POST['action'] ?? 'save_db';
-    $xmlFile = $_FILES['xml_file']['tmp_name'];
+function has_column(PDO $pdo, string $table, string $column, array &$debugLogs): bool
+{
+    try {
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM {$table} LIKE ?");
+        $stmt->execute([$column]);
+        $exists = (bool)$stmt->fetch();
+        log_debug($debugLogs, 'カラムの存在確認をしました。', ['table' => $table, 'column' => $column, 'exists' => $exists]);
+        return $exists;
+    } catch (Exception $e) {
+        log_debug($debugLogs, 'カラム確認に失敗しました。', ['table' => $table, 'column' => $column, 'error' => $e->getMessage()]);
+        return false;
+    }
+}
 
-    if (is_uploaded_file($xmlFile)) {
-        try {
-            if ($action === 'download_csv') {
-                $xml = load_xml_file($xmlFile, $debugLogs);
+  if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? 'preview';
 
-                $lawTitle = (string)$xml->LawBody->LawTitle;
-                $rows = build_csv_rows_from_xml($xml, $debugLogs);
-                $filename = $lawTitle . "_structured_" . date('Ymd') . ".csv";
+    if ($action === 'confirm_register') {
+        $xmlPayload = $_POST['xml_payload'] ?? '';
+        if ($xmlPayload === '') {
+            $isError = true;
+            $message = 'XMLデータが見つかりませんでした。もう一度アップロードしてください。';
+            log_debug($debugLogs, 'XMLペイロードが空です。');
+        } else {
+            try {
+                require_once __DIR__ . '/../includes/db_config.php';
 
-                header('Content-Type: text/csv; charset=shift_jis');
-                header('Content-Disposition: attachment; filename="' . $filename . '"');
-
-                $output = fopen('php://output', 'w');
-
-                $head = ['法規名', '章', '節', '条', '条（節）見出し', '項', '内容'];
-                mb_convert_variables('SJIS-win', 'UTF-8', $head);
-                fputcsv($output, $head);
-
-                foreach ($rows as $row) {
-                    $line = [
-                        $row['law_name'],
-                        $row['chapter'],
-                        $row['section'],
-                        $row['article'],
-                        $row['article_heading'],
-                        $row['paragraph'],
-                        $row['content'],
-                    ];
-
-                    mb_convert_variables('SJIS-win', 'UTF-8', $line);
-                    fputcsv($output, $line);
+                $xmlContent = base64_decode($xmlPayload, true);
+                if ($xmlContent === false) {
+                    throw new Exception('XMLデータのデコードに失敗しました。');
                 }
 
-                fclose($output);
-                exit;
-            }
+                $xml = load_xml_string($xmlContent, $debugLogs);
+ $lawTitle = (string)$xml->LawBody->LawTitle;
+                $lawNum = (string)$xml->attributes()->LawNum;
+                log_debug($debugLogs, 'DB登録処理を開始しました。', ['lawTitle' => $lawTitle, 'lawNum' => $lawNum]);
 
-            require_once __DIR__ . '/../includes/db_config.php';
+                $updatedDate = trim($_POST['updated_date'] ?? '');
+                $effectiveDate = trim($_POST['effective_date'] ?? '');
+                $tags = trim($_POST['tags'] ?? '');
+                $sourceUrl = trim($_POST['source_url'] ?? '');
+                $dropboxUrl = trim($_POST['dropbox_url'] ?? '');
 
-            $xml = load_xml_file($xmlFile, $debugLogs);
+                $stmtCheck = $pdo->prepare("SELECT id FROM laws WHERE law_num = ? AND is_latest = 1 LIMIT 1");
+                $stmtCheck->execute([$lawNum]);
+                $oldVersion = $stmtCheck->fetch();
 
-            // XMLから法令名と法令番号を取得
-            $lawTitle = (string)$xml->LawBody->LawTitle;
-            $lawNum = (string)$xml->attributes()->LawNum;
-            log_debug($debugLogs, 'DB登録処理を開始しました。', ['lawTitle' => $lawTitle, 'lawNum' => $lawNum]);
+                $pdo->beginTransaction();
 
-            // 1. 既存の同じ法令番号の「最新版」を探す
-            $stmtCheck = $pdo->prepare("SELECT id FROM laws WHERE law_num = ? AND is_latest = 1 LIMIT 1");
-            $stmtCheck->execute([$lawNum]);
-            $oldVersion = $stmtCheck->fetch();
+                $parentId = null;
+                if ($oldVersion) {
+                    $parentId = $oldVersion['id'];
+                    $updateOld = $pdo->prepare("UPDATE laws SET is_latest = 0 WHERE id = ?");
+                    $updateOld->execute([$parentId]);
+                }
+            
 
-            $pdo->beginTransaction();
+           $versionLabel = date('Ymd') . " アップロード分";
 
-            // 2. もし既存データがあれば、その最新フラグをOFFにする
-            $parentId = null;
-            if ($oldVersion) {
-                $parentId = $oldVersion['id'];
-                $updateOld = $pdo->prepare("UPDATE laws SET is_latest = 0 WHERE id = ?");
-                $updateOld->execute([$parentId]);
-            }
+                $stmtLaw = $pdo->prepare("INSERT INTO laws (law_title, law_num, version_label, is_latest, parent_id, created_at) VALUES (?, ?, ?, 1, ?, NOW())");
+                $stmtLaw->execute([$lawTitle, $lawNum, $versionLabel, $parentId]);
+                $lawId = $pdo->lastInsertId();
 
-            // 3. 新しいバージョンを登録
-            // version_label にはアップロード日時などを自動付与（後で編集可能）
-            $versionLabel = date('Ymd') . " アップロード分";
-
-            $stmtLaw = $pdo->prepare("INSERT INTO laws (law_title, law_num, version_label, is_latest, parent_id, created_at) VALUES (?, ?, ?, 1, ?, NOW())");
-            $stmtLaw->execute([$lawTitle, $lawNum, $versionLabel, $parentId]);
-            $lawId = $pdo->lastInsertId();
-
-            // 4. 条文（law_contents）の登録
-            $stmtContent = $pdo->prepare("INSERT INTO law_contents (law_id, chapter_title, article_title, content_text) VALUES (?, ?, ?, ?)");
-
-            // 条文データの解析（e-Gov XML構造: LawBody -> MainProvision）
-            foreach ($xml->LawBody->MainProvision->xpath('.//Article') as $article) {
-                // 章タイトルの取得（親ノードを遡ってChapterTitleを探す）
-                $chapterTitle = "";
-                $chapter = $article->xpath('ancestor::Chapter/ChapterTitle');
-                if ($chapter) {
-                    $chapterTitle = (string)$chapter[0];
-                } else {
-                    // 節の場合も考慮
-                    $section = $article->xpath('ancestor::Section/SectionTitle');
-                    if ($section) {
-                        $chapterTitle = (string)$section[0];
+                $optionalFields = [
+                    'updated_date' => $updatedDate,
+                    'effective_date' => $effectiveDate,
+                    'tags' => $tags,
+                    'source_url' => $sourceUrl,
+                    'dropbox_url' => $dropboxUrl,
+                ];
+                $updateColumns = [];
+                $updateValues = [];
+                $updatedColumnNames = [];
+                foreach ($optionalFields as $column => $value) {
+                    if (has_column($pdo, 'laws', $column, $debugLogs)) {
+                        $updateColumns[] = "{$column} = ?";
+                        $updateValues[] = $value;
+                        $updatedColumnNames[] = $column;
                     }
                 }
-
-                $articleTitle = (string)$article->ArticleTitle;
-
-                // 本文（Paragraphが複数ある場合を結合）
-                $paragraphs = [];
-                foreach ($article->Paragraph as $para) {
-                    $paragraphs[] = (string)$para->ParagraphSentence->Sentence;
+                if (!empty($updateColumns)) {
+                    $updateValues[] = $lawId;
+                    $stmtOptional = $pdo->prepare("UPDATE laws SET " . implode(', ', $updateColumns) . " WHERE id = ?");
+                    $stmtOptional->execute($updateValues);
+                    log_debug($debugLogs, '任意項目を更新しました。', ['columns' => $updatedColumnNames]);
+                } else {
+                    log_debug($debugLogs, '任意項目の更新をスキップしました。', ['reason' => '該当カラムが存在しません。']);
                 }
-                $contentText = implode("\n", $paragraphs);
 
-                $stmtContent->execute([$lawId, $chapterTitle, $articleTitle, $contentText]);
-            }
+$stmtContent = $pdo->prepare("INSERT INTO law_contents (law_id, chapter_title, article_title, content_text) VALUES (?, ?, ?, ?)");
 
-            $pdo->commit();
-            $message = "「" . htmlspecialchars($lawTitle) . "」を最新バージョンとして登録しました。";
-            if ($parentId) {
-                $message .= "（旧バージョンからの履歴を継承しました）";
-            }
+                foreach ($xml->LawBody->MainProvision->xpath('.//Article') as $article) {
+                    $chapterTitle = "";
+                    $chapter = $article->xpath('ancestor::Chapter/ChapterTitle');
+                    if ($chapter) {
+                        $chapterTitle = (string)$chapter[0];
+                    } else {
+                        $section = $article->xpath('ancestor::Section/SectionTitle');
+                        if ($section) {
+                            $chapterTitle = (string)$section[0];
+                        }
+                    }
+ $articleTitle = (string)$article->ArticleTitle;
 
-        } catch (Exception $e) {
-            if (isset($pdo) && $pdo->inTransaction()) {
-                $pdo->rollBack();
+                    $paragraphs = [];
+                    foreach ($article->Paragraph as $para) {
+                        $paragraphs[] = (string)$para->ParagraphSentence->Sentence;
             }
-            $isError = true;
-            $message = "エラーが発生しました: " . $e->getMessage();
-            log_debug($debugLogs, '例外が発生しました。', ['error' => $e->getMessage()]);
+                    $contentText = implode("\n", $paragraphs);
+
+                    $stmtContent->execute([$lawId, $chapterTitle, $articleTitle, $contentText]);
+                }
+
+                $pdo->commit();
+                $message = "「" . htmlspecialchars($lawTitle) . "」を最新バージョンとして登録しました。";
+                if ($parentId) {
+                    $message .= "（旧バージョンからの履歴を継承しました）";
+                }
+            } catch (Exception $e) {
+                if (isset($pdo) && $pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $isError = true;
+                $message = "エラーが発生しました: " . $e->getMessage();
+                log_debug($debugLogs, '例外が発生しました。', ['error' => $e->getMessage()]);
+            }
         }
-    } else {
-        $isError = true;
-        $message = "アップロードに失敗しました。ファイルを再選択してください。";
-        log_debug($debugLogs, 'ファイルが正しくアップロードされませんでした。');
+    } elseif ($action === 'download_csv') {
+        if (isset($_FILES['xml_file'])) {
+            $xmlFile = $_FILES['xml_file']['tmp_name'];
+            if (is_uploaded_file($xmlFile)) {
+                try {
+                    $xml = load_xml_file($xmlFile, $debugLogs);
+
+                    $lawTitle = (string)$xml->LawBody->LawTitle;
+                    $rows = build_csv_rows_from_xml($xml, $debugLogs);
+                    $filename = $lawTitle . "_structured_" . date('Ymd') . ".csv";
+
+                    header('Content-Type: text/csv; charset=shift_jis');
+                    header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+                    $output = fopen('php://output', 'w');
+
+                    $head = ['法規名', '章', '節', '条', '条（節）見出し', '項', '内容'];
+                    mb_convert_variables('SJIS-win', 'UTF-8', $head);
+                    fputcsv($output, $head);
+
+                    foreach ($rows as $row) {
+                        $line = [
+                            $row['law_name'],
+                            $row['chapter'],
+                            $row['section'],
+                            $row['article'],
+                            $row['article_heading'],
+                            $row['paragraph'],
+                            $row['content'],
+                        ];
+
+                        mb_convert_variables('SJIS-win', 'UTF-8', $line);
+                        fputcsv($output, $line);
+                    }
+
+            fclose($output);
+                    exit;
+                } catch (Exception $e) {
+                    $isError = true;
+                    $message = "エラーが発生しました: " . $e->getMessage();
+                    log_debug($debugLogs, 'CSV出力で例外が発生しました。', ['error' => $e->getMessage()]);
+                }
+            } else {
+                $isError = true;
+                $message = "アップロードに失敗しました。ファイルを再選択してください。";
+                log_debug($debugLogs, 'ファイルが正しくアップロードされませんでした。');
+            }
+        }
+    } elseif ($action === 'preview') {
+        if (isset($_FILES['xml_file'])) {
+            $xmlFile = $_FILES['xml_file']['tmp_name'];
+            if (is_uploaded_file($xmlFile)) {
+                try {
+                    $xml = load_xml_file($xmlFile, $debugLogs);
+                    $lawTitle = (string)$xml->LawBody->LawTitle;
+                    $lawNum = (string)$xml->attributes()->LawNum;
+                    $xmlPayload = base64_encode(file_get_contents($xmlFile));
+
+                    $previewData = [
+                        'id' => '自動採番',
+                        'law_title' => $lawTitle,
+                        'law_num' => $lawNum,
+                        'created_at' => date('Y-m-d H:i'),
+                        'updated_date' => '',
+                        'effective_date' => '',
+                        'tags' => '',
+                        'source_url' => '',
+                        'dropbox_url' => '',
+                    ];
+$message = 'プレビューを表示しました。内容を確認して登録してください。';
+                    log_debug($debugLogs, 'プレビュー用データを作成しました。', ['lawTitle' => $lawTitle, 'lawNum' => $lawNum]);
+                } catch (Exception $e) {
+                    $isError = true;
+                    $message = "エラーが発生しました: " . $e->getMessage();
+                    log_debug($debugLogs, 'プレビュー生成で例外が発生しました。', ['error' => $e->getMessage()]);
+                }
+            } else {
+                $isError = true;
+                $message = "アップロードに失敗しました。ファイルを再選択してください。";
+                log_debug($debugLogs, 'ファイルが正しくアップロードされませんでした。');
+            }
+        }
+                    
     }
 }
 ?>
@@ -235,6 +343,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['xml_file'])) {
         input[type="file"] { margin: 20px 0; display: block; }
         button { background: #0056b3; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-right: 8px; }
         button:hover { background: #004494; }
+        .preview-card { margin-top: 24px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; }
+        .preview-grid { display: grid; grid-template-columns: 160px 1fr; gap: 10px 16px; align-items: center; }
+        .preview-grid label { font-weight: bold; color: #333; }
+        .preview-grid input[type="text"],
+        .preview-grid input[type="month"],
+        .preview-grid input[type="date"] {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .preview-grid input[disabled] { background: #eee; color: #666; }
+        .preview-actions { margin-top: 16px; }
         .note { color: #555; font-size: 13px; margin-top: 12px; }
     </style>
 </head>
@@ -256,10 +377,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['xml_file'])) {
 
         <form action="" method="post" enctype="multipart/form-data">
             <input type="file" name="xml_file" accept=".xml" required>
-            <button type="submit" name="action" value="save_db">データベースに最新版として登録</button>
+            <button type="submit" name="action" value="preview">内容を確認して登録</button>
             <button type="submit" name="action" value="download_csv">CSVをダウンロード（DB登録しない）</button>
             <div class="note">CSVダウンロードを選ぶと、SQLには登録せずにCSVのみ生成します。</div>
         </form>
+        <?php if ($previewData): ?>
+            <div class="preview-card">
+                <h2>登録内容の確認</h2>
+                <p class="note">IDなどの自動採番項目は編集できません。</p>
+                <form action="" method="post">
+                    <input type="hidden" name="action" value="confirm_register">
+                    <input type="hidden" name="xml_payload" value="<?php echo htmlspecialchars($xmlPayload); ?>">
+
+                    <div class="preview-grid">
+                        <label>ID</label>
+                        <input type="text" value="<?php echo htmlspecialchars($previewData['id']); ?>" disabled>
+
+                        <label>法令名</label>
+                        <input type="text" value="<?php echo htmlspecialchars($previewData['law_title']); ?>" disabled>
+
+                        <label>法令番号</label>
+                        <input type="text" value="<?php echo htmlspecialchars($previewData['law_num']); ?>" disabled>
+
+                        <label>登録日時</label>
+                        <input type="text" value="<?php echo htmlspecialchars($previewData['created_at']); ?>" disabled>
+
+                        <label>最終更新日</label>
+                        <input type="date" name="updated_date" value="<?php echo htmlspecialchars($previewData['updated_date']); ?>">
+
+                        <label>施行年月</label>
+                        <input type="month" name="effective_date" value="<?php echo htmlspecialchars($previewData['effective_date']); ?>">
+
+                        <label>タグ</label>
+                        <input type="text" name="tags" value="<?php echo htmlspecialchars($previewData['tags']); ?>" placeholder="例: 賃金, 残業">
+
+                        <label>参照URL</label>
+                        <input type="text" name="source_url" value="<?php echo htmlspecialchars($previewData['source_url']); ?>" placeholder="e-Govなど">
+
+                        <label>Dropbox URL</label>
+                        <input type="text" name="dropbox_url" value="<?php echo htmlspecialchars($previewData['dropbox_url']); ?>" placeholder="共有リンク">
+                    </div>
+
+                    <div class="preview-actions">
+                        <button type="submit">登録を確定する</button>
+                    </div>
+                </form>
+            </div>
+        <?php endif; ?>
     </div>
 </div>
 

@@ -40,6 +40,7 @@ if ($lawId <= 0) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_law_info']) && !$isError) {
+    $lawNum = $_POST['law_num'] ?? '';
     $dropbox = $_POST['dropbox_url'] ?? '';
     $source = $_POST['source_url'] ?? '';
     $tags = $_POST['tags'] ?? '';
@@ -48,11 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_law_info']) &&
 
     try {
         if ($hasEffectiveDate) {
-            $stmt = $pdo->prepare("UPDATE laws SET dropbox_url = ?, source_url = ?, tags = ?, updated_date = ?, effective_date = ? WHERE id = ?");
-            $stmt->execute([$dropbox, $source, $tags, $u_date, $effectiveDate, $lawId]);
+            $stmt = $pdo->prepare("UPDATE laws SET law_num = ?, dropbox_url = ?, source_url = ?, tags = ?, updated_date = NOW(), effective_date = ? WHERE id = ?");
+            $stmt->execute([$lawNum, $dropbox, $source, $tags, $effectiveDate, $lawId]);
         } else {
-            $stmt = $pdo->prepare("UPDATE laws SET dropbox_url = ?, source_url = ?, tags = ?, updated_date = ? WHERE id = ?");
-            $stmt->execute([$dropbox, $source, $tags, $u_date, $lawId]);
+            $stmt = $pdo->prepare("UPDATE laws SET law_num = ?, dropbox_url = ?, source_url = ?, tags = ?, updated_date = NOW() WHERE id = ?");
+            $stmt->execute([$lawNum, $dropbox, $source, $tags, $lawId]);
         }
         $message = "法律情報を更新しました！";
         log_debug($debugLogs, '法律情報を更新しました。', ['lawId' => $lawId]);
@@ -62,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_law_info']) &&
         log_debug($debugLogs, '更新エラーが発生しました。', ['error' => $e->getMessage()]);
     }
 }
+
 
 if (!$isError && $lawId > 0) {
     try {
@@ -83,8 +85,15 @@ if (!$isError && $lawId > 0) {
     }
 }
 
-$displayUpdated = $law['updated_date'] ?? '';
-if ($displayUpdated === '' && !empty($law['created_at'])) {
+$displayCreated = '';
+if (!empty($law['created_at'])) {
+    $displayCreated = date('Y/m/d', strtotime($law['created_at']));
+}
+
+$displayUpdated = '';
+if (!empty($law['updated_date'])) {
+    $displayUpdated = date('Y/m/d', strtotime($law['updated_date']));
+} elseif (!empty($law['created_at'])) {
     $displayUpdated = date('Y/m/d', strtotime($law['created_at']));
 }
 ?>
@@ -114,7 +123,6 @@ if ($displayUpdated === '' && !empty($law['created_at'])) {
 <?php include __DIR__ . '/sidebar.php'; ?>
 
 <div class="main-content">
-    <a href="dashboard.php" class="back-link">← ダッシュボードに戻る</a>
     <h1>法令編集</h1>
 
     <?php if (!$hasEffectiveDate): ?>
@@ -131,15 +139,15 @@ if ($displayUpdated === '' && !empty($law['created_at'])) {
         <div class="law-meta">
             <div><strong>ID:</strong> <?php echo htmlspecialchars($law['id']); ?></div>
             <div><strong>法令名:</strong> <?php echo htmlspecialchars($law['law_title']); ?></div>
-            <div><strong>法令番号:</strong> <?php echo htmlspecialchars($law['law_num']); ?></div>
+           <div><strong>登録日:</strong> <?php echo htmlspecialchars($displayCreated); ?></div>
+            <div><strong>更新日:</strong> <?php echo htmlspecialchars($displayUpdated); ?></div>
         </div>
 
         <form action="" method="post" class="edit-form">
             <input type="hidden" name="law_id" value="<?php echo htmlspecialchars($law['id']); ?>">
 
-            <label>📅 更新日</label>
-            <input type="date" name="updated_date" value="<?php echo htmlspecialchars($displayUpdated); ?>">
-
+             <label>🔢 法令番号</label>
+            <input type="text" name="law_num" value="<?php echo htmlspecialchars($law['law_num']); ?>">
             <label>📅 法令施行年月</label>
             <input type="month" name="effective_date" value="<?php echo htmlspecialchars($law['effective_date'] ?? ''); ?>" <?php echo $hasEffectiveDate ? '' : 'disabled'; ?>>
 
